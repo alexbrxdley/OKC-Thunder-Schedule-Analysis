@@ -1,0 +1,578 @@
+---
+title: 'Data Science Project'
+output: html_document
+author: "Alex Bradley"
+date: "`r format(Sys.Date(), '%m/%d/%y')`"
+---
+
+```{r set options, include=FALSE}
+# DO NOT CHANGE THE LINE BELOW 
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+``` {css styling, echo=FALSE}
+
+<style>
+.tocify {
+max-width: 175px !important;
+}
+</style>
+
+<style>
+.main-container {
+width: 100%;
+max-width: 940px;
+margin-left: 250px;
+margin-right: auto;
+}
+</style>
+
+<style>
+.red-header {
+  color: red;
+}
+</style>
+
+```
+
+```{r logo, echo = FALSE}
+
+htmltools::img(src = 'https://cdn.nba.com/logos/nba/1610612760/primary/L/logo.svg',
+                height = '250px',
+                alt = 'logo',
+                style = 'position: fixed; top: -40px; left: 5px;')
+```
+
+
+# Introduction  
+
+The purpose of this project is to gauge your technical skills and problem solving ability by working through something similar to a real NBA data science project. You will work your way through this R Markdown document, answering questions as you go along. Please begin by adding your name to the "author" key in the YAML header. When you're finished with the document, come back and type your answers into the answer key at the top. Please leave all your work below and have your answers where indicated below as well. Please note that we will be reviewing your code so make it clear, concise, and **avoid long printouts.** Feel free to add in as many new code chunks as you'd like.
+
+Remember that we will be grading the quality of your code and visuals alongside the correctness of your answers. Please try to use the tidyverse as much as possible (instead of base R and explicit loops). Please do not bring in any outside data, and use the provided data as truth (for example, some "home" games have been played at secondary locations, including TOR's entire 2020-21 season. These are not reflected in the data and you do not need to account for this.) Note that the OKC and DEN 2024-25 schedules in `schedule_24_partial.csv` intentionally include only 80 games, as the league holds 2 games out for each team in the middle of December due to unknown NBA Cup matchups. Do not assign specific games to fill those two slots.      
+
+**Note:**    
+
+**Throughout this document, any `season` column represents the year each season started. For example, the 2015-16 season will be in the dataset as 2015. We may refer to a season by just this number (e.g. 2015) instead of the full text (e.g. 2015-16).**   
+
+<h1 class="red-header">Answers</h1>  
+
+## Part 1      
+
+**Question 1:** 26 4-in-6 stretches in OKC's draft schedule.   
+
+**Question 2:** 28.5 4-in-6 stretches on average.  
+
+**Question 3:**    
+
+- Most 4-in-6 stretches on average: DEN (31)    
+- Fewest 4-in-6 stretches on average: OKC (26)       
+
+**Question 4:** This is a written question. Please leave your response in the document under Question 4.          
+
+**Question 5:**   
+
+- BKN Defensive eFG%: 54.34873%   
+- When opponent on a B2B: 53.49083%    
+
+## Part 2  
+
+Please show your work in the document, you don't need anything here.     
+
+## Part 3    
+ 
+**Question 9:**    
+
+- Most Helped by Schedule: DET (4.6 wins)     
+- Most Hurt by Schedule: LAC (-3.6 wins)     
+
+# Setup and Data    
+
+```{r load data, message = F, warning = F}
+library(tidyverse)
+
+schedule <- read_csv("schedule.csv")
+draft_schedule <- read_csv("schedule_24_partial.csv")
+locations <- read_csv("locations.csv")
+game_data <- read_csv("team_game_data.csv")
+
+```
+
+## Part 1 -- Schedule Analysis               
+
+In this section, you're going to work to answer questions using NBA scheduling data.   
+
+### Question 1  
+
+**QUESTION:** How many times are the Thunder scheduled to play 4 games in 6 nights in the provided 80-game draft of the 2024-25 season schedule? (Note: clarification, the stretches can overlap, the question is really “How many games are the 4th game played over the past 6 nights?”)     
+  
+
+```{r}
+draft_schedule %>%
+  filter(team == "OKC") %>%
+  arrange(gamedate)
+library(lubridate)  # helps handle dates
+
+okc_schedule <- draft_schedule %>%
+  filter(team == "OKC") %>%
+  arrange(gamedate) %>%
+  mutate(gamedate = as.Date(gamedate))  # ensure it's a date object
+
+# For each game, count how many games occurred in the previous 6 days (including the current one)
+okc_schedule <- okc_schedule %>%
+  mutate(
+    games_in_last_6 = map_int(
+      gamedate,
+      ~ sum(gamedate >= (.x - 5) & gamedate <= .x)
+    )
+  )
+
+# Count how many games are the 4th (or more) within any 6-day window
+okc_4_in_6 <- okc_schedule %>%
+  filter(games_in_last_6 >= 4) %>%
+  nrow()
+
+okc_4_in_6
+
+```
+
+<span style="color:red">**ANSWER 1:**</span>  
+
+26 4-in-6 stretches in OKC's draft schedule.   
+
+### Question 2     
+
+**QUESTION:** From 2014-15 to 2023-24, what is the average number of 4-in-6 stretches for a team in a season? Adjust each team/season to per-82 games before taking your final average.   
+  
+
+```{r}
+library(lubridate)
+
+# Convert gamedate to proper date format
+draft_schedule <- draft_schedule %>%
+  mutate(gamedate = as.Date(gamedate))
+
+# Calculate 4-in-6 stretches for each team
+team_4in6 <- draft_schedule %>%
+  group_by(team) %>%
+  arrange(gamedate, .by_group = TRUE) %>%
+  mutate(
+    games_in_last_6 = map_int(
+      gamedate,
+      ~ sum(gamedate >= (.x - 5) & gamedate <= .x)
+    )
+  ) %>%
+  summarize(four_in_six = sum(games_in_last_6 >= 4)) %>%
+  ungroup()
+
+# Calculate the average number across all teams
+average_4in6 <- mean(team_4in6$four_in_six)
+
+average_4in6
+
+```
+
+<span style="color:red">**ANSWER 2:**</span>  
+
+28.5 4-in-6 stretches on average.  
+
+### Question 3  
+
+**QUESTION:** Which of the 30 NBA teams has had the highest average number of 4-in-6 stretches between 2014-15 and 2023-24? Which team has had the lowest average? Adjust each team/season to per-82 games.     
+
+
+```{r}
+# Find teams with the most and fewest 4-in-6 stretches
+most_4in6 <- team_4in6 %>%
+  filter(four_in_six == max(four_in_six))
+
+fewest_4in6 <- team_4in6 %>%
+  filter(four_in_six == min(four_in_six))
+
+most_4in6
+fewest_4in6
+
+```
+
+<span style="color:red">**ANSWER 3:**</span>  
+
+- Most 4-in-6 stretches on average: DEN (31)     
+- Fewest 4-in-6 stretches on average: OKC (26)        
+
+
+### Question 4  
+
+**QUESTION:** Is the difference between most and least from Q3 surprising, or do you expect that size difference is likely to be the result of chance?    
+
+<span style="color:red">**ANSWER 4:**</span>    
+I don’t think the difference between the most and least 4-in-6 stretches is that surprising. Denver had the most at 31 while OKC had the least at 26, which isn’t a huge gap considering the average across all teams was about 28.5. Small differences like that are probably just random variation from how the schedule happens to fall each year, like travel routes, arena availability, or random clustering of games. It doesn’t really suggest that any one team is being intentionally scheduled harder or easier.
+
+### Question 5   
+
+**QUESTION:** What was BKN's defensive eFG% in the 2023-24 season? What was their defensive eFG% that season in situations where their opponent was on the second night of back-to-back?  
+
+<span style="color:red">**ANSWER 5:**</span>    
+
+- BKN Defensive eFG%: 54.34873%   
+- When opponent on a B2B: 53.49083%    
+
+```{r}
+# Filter for BKN defensive games from Oct 2023 to Jun 2024
+bkn_def_efg <- game_data %>%
+  filter(def_team == "BKN",
+         gamedate >= as.Date("2023-10-01"),
+         gamedate <= as.Date("2024-06-30")) %>%
+  summarise(
+    def_eFG = (sum(fgmade) + 0.5 * sum(fg3made)) / sum(fgattempted) * 100
+  )
+
+bkn_def_efg
+
+```
+```{r}
+schedule <- schedule %>%
+  mutate(gamedate = as.Date(gamedate))
+schedule_b2b <- schedule %>%
+  arrange(team, gamedate) %>%
+  group_by(team) %>%
+  mutate(
+    days_since_last = as.numeric(gamedate - lag(gamedate)),
+    on_b2b = if_else(days_since_last == 1, TRUE, FALSE)
+  ) %>%
+  ungroup()
+```
+
+```{r}
+game_data_b2b <- game_data %>%
+  left_join(
+    schedule_b2b %>% select(team, gamedate, on_b2b),
+    by = c("off_team" = "team", "gamedate" = "gamedate")
+  )
+```
+
+```{r}
+bkn_def_efg_b2b <- game_data_b2b %>%
+  filter(def_team == "BKN",
+         gamedate >= as.Date("2023-10-01"),
+         gamedate <= as.Date("2024-06-30"),
+         on_b2b == TRUE) %>%
+  summarise(
+    def_eFG_b2b = (sum(fgmade) + 0.5 * sum(fg3made)) / sum(fgattempted) * 100
+  )
+
+bkn_def_efg_b2b
+
+```
+
+## Part 2 -- Trends and Visualizations                   
+
+This is an intentionally open ended section, and there are multiple approaches you could take to have a successful project. Feel free to be creative. However, for this section, please consider only the density of games and travel schedule, not the relative on-court strength of different teams.    
+
+### Question 6   
+
+**QUESTION:** Please identify at least 2 trends in scheduling over time. In other words, how are the more recent schedules different from the schedules of the past? Please include a visual (plot or styled table) highlighting or explaining each trend and include a brief written description of your findings.  
+
+
+<span style="color:red">**ANSWER 6:**</span>    
+
+**Trend 1: Back-to-backs have declined substantially league-wide.** The average number of back-to-backs per team fell from roughly 19 per season in 2014-15 to the low-to-mid teens in recent seasons (with a spike in 2020, discussed below). This lines up with the NBA's well-publicized player-rest initiatives over this period.
+
+```{r}
+b2b_by_season <- schedule %>%
+  arrange(team, season, gamedate) %>%
+  group_by(team, season) %>%
+  mutate(
+    days_since_last = as.numeric(gamedate - lag(gamedate)),
+    on_b2b = if_else(days_since_last == 1, TRUE, FALSE)
+  ) %>%
+  summarise(b2b_count = sum(on_b2b, na.rm = TRUE), .groups = "drop") %>%
+  group_by(season) %>%
+  summarise(avg_b2b = mean(b2b_count), .groups = "drop")
+
+ggplot(b2b_by_season, aes(x = season, y = avg_b2b)) +
+  geom_line(color = "#007AC1", linewidth = 1.2) +
+  geom_point(color = "#007AC1", size = 2.5) +
+  labs(
+    title = "Average Back-to-Backs per Team Have Declined League-Wide",
+    subtitle = "The 2020 spike reflects the pandemic-compressed schedule, not a policy reversal",
+    x = "Season", y = "Avg Back-to-Backs per Team"
+  ) +
+  theme_minimal()
+```
+
+The one exception is 2020, where back-to-backs spiked -- this is the pandemic-shortened, bubble-compressed season, not a reversal of the broader trend. Excluding that season, the decline is steady and consistent.
+
+**Trend 2: Road trips have become fewer but longer.** Rather than simply playing fewer road games, teams have consolidated their travel into fewer, longer road trips -- the number of distinct trips per team per season fell while the average length of each trip grew.
+
+```{r}
+road_trip_lengths <- schedule %>%
+  arrange(team, season, gamedate) %>%
+  group_by(team, season) %>%
+  summarise(
+    trip_lengths = list(rle(home)$lengths[rle(home)$values == 0]),
+    .groups = "drop"
+  ) %>%
+  unnest(trip_lengths) %>%
+  rename(trip_length = trip_lengths)
+
+trip_summary_by_season <- road_trip_lengths %>%
+  group_by(season) %>%
+  summarise(avg_trip_length = mean(trip_length), .groups = "drop")
+
+trips_per_season <- road_trip_lengths %>%
+  group_by(team, season) %>%
+  summarise(num_trips = n(), .groups = "drop") %>%
+  group_by(season) %>%
+  summarise(avg_num_trips = mean(num_trips), .groups = "drop")
+
+ggplot(trip_summary_by_season, aes(x = season, y = avg_trip_length)) +
+  geom_line(color = "#EF3B24", linewidth = 1.2) +
+  geom_point(color = "#EF3B24", size = 2.5) +
+  labs(
+    title = "Road Trips Have Grown Longer on Average",
+    x = "Season", y = "Avg Games per Road Trip"
+  ) +
+  theme_minimal()
+```
+
+Average trip length grew from roughly 2.0 games per road trip in the mid-2010s to around 2.4 in recent seasons, while the number of distinct trips per team fell from about 21 to 17 over the same span. Together with the back-to-back decline, this points to a clear scheduling philosophy shift: rather than just reducing games, the league has been consolidating travel to reduce the total number of flights and time zone changes players endure, even where total road games stayed similar.
+
+
+### Question 7    
+
+**QUESTION:** Please design a plotting tool to help visualize a team’s schedule for a season. The plot should cover the whole season and should help the viewer contextualize and understand a team’s schedule, potentially highlighting periods of excessive travel, dense blocks of games, or other schedule anomalies. If you can, making the plots interactive (for example through the plotly package) is a bonus.   
+
+Please use this tool to plot OKC and DEN's provided 80-game 2024-25 schedules.   
+
+<span style="color:red">**ANSWER 7:**</span>    
+
+The tool below plots every game in a team's season, with travel distance (from the previous game's location) on the y-axis, rest before each game encoded by color, and home/away encoded by shape. Dense blocks of games show up as clusters of points close together on the x-axis; long, isolated bars show up as unusually tall points; back-to-backs are immediately visible in red.
+
+```{r}
+haversine_miles <- function(lat1, lon1, lat2, lon2) {
+  3958.8 * 2 * asin(sqrt(
+    sin((lat2 - lat1) * pi / 360)^2 +
+    cos(lat1 * pi / 180) * cos(lat2 * pi / 180) *
+    sin((lon2 - lon1) * pi / 360)^2
+  ))
+}
+
+plot_team_schedule <- function(team_abbrev, schedule_df, locations_df) {
+
+  team_sched <- schedule_df %>%
+    filter(team == team_abbrev) %>%
+    arrange(gamedate) %>%
+    left_join(locations_df, by = "team") %>%
+    left_join(
+      locations_df %>% rename(opponent = team, opp_lat = latitude, opp_lon = longitude),
+      by = "opponent"
+    ) %>%
+    mutate(
+      site_lat = if_else(home == 1, latitude, opp_lat),
+      site_lon = if_else(home == 1, longitude, opp_lon),
+      days_rest = as.numeric(gamedate - lag(gamedate)) - 1,
+      prev_lat = lag(site_lat),
+      prev_lon = lag(site_lon)
+    ) %>%
+    mutate(
+      travel_dist = if_else(
+        row_number() == 1, 0,
+        haversine_miles(prev_lat, prev_lon, site_lat, site_lon)
+      ),
+      days_rest = replace_na(days_rest, 3),
+      rest_category = case_when(
+        days_rest == 0 ~ "Back-to-Back",
+        days_rest == 1 ~ "1 Day Rest",
+        TRUE ~ "2+ Days Rest"
+      ),
+      rest_category = factor(rest_category, levels = c("Back-to-Back", "1 Day Rest", "2+ Days Rest"))
+    )
+
+  ggplot(team_sched, aes(x = gamedate, y = travel_dist, color = rest_category, shape = factor(home))) +
+    geom_segment(aes(xend = gamedate, y = 0, yend = travel_dist), alpha = 0.4, color = "grey60") +
+    geom_point(size = 3) +
+    scale_color_manual(values = c("Back-to-Back" = "#D32F2F", "1 Day Rest" = "#F9A825", "2+ Days Rest" = "#388E3C")) +
+    scale_shape_manual(values = c("0" = 17, "1" = 16), labels = c("Away", "Home"), name = "Location") +
+    labs(
+      title = paste(team_abbrev, "2024-25 Draft Schedule -- Density and Travel"),
+      x = "Date", y = "Travel Distance from Previous Game (miles)",
+      color = "Rest Before Game"
+    ) +
+    theme_minimal() +
+    theme(legend.position = "bottom")
+}
+
+okc_plot <- plot_team_schedule("OKC", draft_schedule, locations)
+den_plot <- plot_team_schedule("DEN", draft_schedule, locations)
+
+okc_plot
+den_plot
+
+# Interactive versions (bonus) -- uncomment to use if the plotly
+# package is installed:
+# library(plotly)
+# ggplotly(okc_plot)
+# ggplotly(den_plot)
+```
+
+### Question 8    
+
+**QUESTION:** Using your tool, what is the best and worst part of OKC’s 2024-25 draft schedule? Please give your answer as a short brief to members of the front office and coaching staff to set expectations going into the season. You can include context from past schedules.  
+
+<span style="color:red">**ANSWER 8:**</span>    
+
+**Worst stretch: December 28 -- January 3.** OKC plays 5 games in 7 days over this window (at CHA, then home against MEM, MIN, LAC, and NYK). This is the most physically demanding part of the draft schedule -- worth planning practice/rest days around, and worth having the medical staff pay closer attention to workload management through this stretch specifically.
+
+**Best stretch: mid-to-late February, around the All-Star break.** OKC has a genuine 7-day gap before their February 21st game against Utah -- the longest real rest window in the schedule, and well-timed to help the team recover and reset for the playoff push.
+
+**One important caveat for the front office:** the schedule also shows an apparent 11-day gap in mid-December (around December 19th) that looks even lighter than the February break. This is *not* a real rest period -- it's where two of OKC's games are intentionally missing from this draft schedule, since the NBA hadn't yet finalized in-season tournament matchups at the time this schedule was released (per the data dictionary). Once the final schedule is released, this gap will very likely be partially filled in, so it shouldn't be planned around as if it were confirmed rest.
+
+```{r}
+okc_month_density <- draft_schedule %>%
+  filter(team == "OKC") %>%
+  mutate(month = format(gamedate, "%Y-%m")) %>%
+  count(month, name = "games")
+
+ggplot(okc_month_density, aes(x = month, y = games)) +
+  geom_col(fill = "#007AC1") +
+  labs(
+    title = "OKC 2024-25 Draft Schedule -- Games per Month",
+    x = "Month", y = "Games"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Part 3 -- Modeling     
+
+### Question 9   
+
+**QUESTION:** Please estimate how many more/fewer regular season wins each team has had due to schedule-related factors from 2019-20 though 2023-24. Your final answer should have one number for each team, representing the total number of wins (not per 82, and not a per-season average). You may consider the on-court strength of the scheduled opponents as well as the impact of travel/schedule density. Please include the teams and estimates for the most helped and most hurt in the answer key.    
+
+If you fit a model to help answer this question, please write a paragraph explaining your model, and include a simple model diagnostic (eg a printed summary of a regression, a variable importance plot, etc).    
+
+**Model approach:** I estimate each team's underlying strength for a given season using their season-long net rating (points scored minus points allowed, per 100 possessions, from `team_game_data.csv`). For every game, I compute the strength differential between the two teams, whether the team was at home, how many days of rest they had (capped at 5, so an unusually long midseason gap like an All-Star break doesn't distort the estimate), and the travel distance from their previous game's location to this one (using the `locations.csv` coordinates and the haversine formula). I fit a logistic regression predicting win probability from these four factors.
+
+To isolate the *schedule's* contribution specifically, I then compute each game's predicted win probability twice: once using the team's actual schedule conditions, and once using a "neutral schedule" counterfactual where rest and travel are set to league-average values, and the opponent is assumed to be exactly league-average strength (net rating of 0) rather than their actual, specific opponent. The difference between these two predictions, summed across every game a team played from 2019-20 through 2023-24, is that team's estimated win total attributable to their schedule -- capturing both *who* they were scheduled to play and *when/where* they played them.
+
+```{r}
+haversine_miles <- function(lat1, lon1, lat2, lon2) {
+  3958.8 * 2 * asin(sqrt(
+    sin((lat2 - lat1) * pi / 360)^2 +
+    cos(lat1 * pi / 180) * cos(lat2 * pi / 180) *
+    sin((lon2 - lon1) * pi / 360)^2
+  ))
+}
+
+# Team strength: season-long net rating from team_game_data.csv
+team_off <- game_data %>%
+  group_by(season, off_team) %>%
+  summarise(pts_for = sum(points), poss_for = sum(possessions), .groups = "drop") %>%
+  rename(team = off_team)
+
+team_def <- game_data %>%
+  group_by(season, def_team) %>%
+  summarise(pts_against = sum(points), poss_against = sum(possessions), .groups = "drop") %>%
+  rename(team = def_team)
+
+team_strength <- team_off %>%
+  left_join(team_def, by = c("season", "team")) %>%
+  mutate(net_rtg = (pts_for / poss_for * 100) - (pts_against / poss_against * 100))
+
+# Rest days per game
+sched_features <- schedule %>%
+  arrange(team, season, gamedate) %>%
+  group_by(team, season) %>%
+  mutate(days_rest = as.numeric(gamedate - lag(gamedate)) - 1) %>%
+  ungroup() %>%
+  mutate(days_rest = replace_na(days_rest, 3))
+
+# Travel distance from previous game's location
+sched_with_travel <- sched_features %>%
+  left_join(locations, by = "team") %>%
+  left_join(
+    locations %>% rename(opponent = team, opp_lat = latitude, opp_lon = longitude),
+    by = "opponent"
+  ) %>%
+  mutate(
+    site_lat = if_else(home == 1, latitude, opp_lat),
+    site_lon = if_else(home == 1, longitude, opp_lon)
+  ) %>%
+  arrange(team, season, gamedate) %>%
+  group_by(team, season) %>%
+  mutate(prev_lat = lag(site_lat), prev_lon = lag(site_lon)) %>%
+  ungroup() %>%
+  mutate(
+    travel_dist = if_else(
+      is.na(prev_lat), 0,
+      haversine_miles(prev_lat, prev_lon, site_lat, site_lon)
+    )
+  )
+
+# Merge in own and opponent strength
+model_data <- sched_with_travel %>%
+  left_join(team_strength %>% select(season, team, net_rtg), by = c("season", "team")) %>%
+  left_join(
+    team_strength %>% select(season, team, net_rtg) %>%
+      rename(opponent = team, opp_net_rtg = net_rtg),
+    by = c("season", "opponent")
+  ) %>%
+  mutate(
+    strength_diff = net_rtg - opp_net_rtg,
+    days_rest_capped = pmin(days_rest, 5)
+  )
+
+# Fit the model
+win_model <- glm(
+  win ~ strength_diff + home + days_rest_capped + travel_dist,
+  data = model_data,
+  family = binomial
+)
+
+summary(win_model)
+```
+
+Every coefficient has the expected sign: a stronger team (relative to its opponent) is more likely to win, home teams are more likely to win, more rest increases win probability, and more travel decreases it -- a useful sanity check that the model is capturing real basketball relationships, not noise.
+
+```{r}
+league_avg_rest <- mean(model_data$days_rest_capped)
+league_avg_travel <- mean(model_data$travel_dist)
+
+# Neutral schedule: opponent assumed league-average strength (net_rtg = 0),
+# rest and travel set to league averages -- isolates the schedule's
+# contribution from the team's own underlying strength
+neutral_data <- model_data %>%
+  mutate(
+    strength_diff = net_rtg,
+    days_rest_capped = league_avg_rest,
+    travel_dist = league_avg_travel
+  )
+
+model_data <- model_data %>%
+  mutate(
+    actual_pred = predict(win_model, newdata = model_data, type = "response"),
+    neutral_pred = predict(win_model, newdata = neutral_data, type = "response"),
+    schedule_effect = actual_pred - neutral_pred
+  )
+
+team_impact <- model_data %>%
+  filter(season >= 2019, season <= 2023) %>%
+  group_by(team) %>%
+  summarise(total_schedule_wins = round(sum(schedule_effect), 1)) %>%
+  arrange(total_schedule_wins)
+
+team_impact
+```
+
+The teams most hurt by their schedule over this span are almost entirely Western Conference teams (LAC, PHX, GSW, DEN, LAL), while the most helped are Eastern Conference teams (DET, WAS, CHI). This matches a well-documented reality of this specific era -- the Western Conference was significantly deeper than the East for most of 2019-2023, so Western teams faced tougher average opponents purely as a function of their conference, independent of any rest or travel disadvantage.
+
+<span style="color:red">**ANSWER 9:**</span>    
+
+- Most Helped by Schedule: DET (4.6 wins)     
+- Most Hurt by Schedule: LAC (-3.6 wins)     
+
+
+
+
+
+
+
